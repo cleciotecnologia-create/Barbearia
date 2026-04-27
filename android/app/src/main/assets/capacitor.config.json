@@ -1,0 +1,6 @@
+{
+	"appId": "com.navalhaestilo.app",
+	"appName": "Navalha & Estilo",
+	"webDir": "dist",
+	"bundledWebRuntime": false
+}
