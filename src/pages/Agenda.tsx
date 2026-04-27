@@ -20,6 +20,8 @@ interface Barbearia {
   id: string;
   nome: string;
   slug: string;
+  suspensa?: boolean;
+  motivoSuspensao?: string;
 }
 
 interface Servico {
@@ -48,7 +50,6 @@ export default function BookingPage() {
     async function fetchData() {
       if (!slug) return;
       try {
-        // Find Barbearia
         const bQuery = query(collection(db, "barbearias"), where("slug", "==", slug));
         const bSnap = await getDocs(bQuery);
         
@@ -62,7 +63,6 @@ export default function BookingPage() {
         bData.id = bDoc.id;
         setBarbearia(bData);
 
-        // Find Services
         const sQuery = query(collection(db, "servicos"), where("barbeariaId", "==", bDoc.id));
         const sSnap = await getDocs(sQuery);
         
@@ -132,9 +132,45 @@ Nome: ${clienteNome}`;
     );
   }
 
+  if (barbearia?.suspensa) {
+    return (
+      <div className="min-h-screen bg-[#FDFDFD] flex flex-col items-center justify-center p-6 text-center">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white border border-slate-100 p-12 rounded-[3.5rem] shadow-2xl shadow-indigo-100 space-y-8"
+        >
+          <div className="w-24 h-24 bg-red-50 text-red-600 rounded-[2rem] flex items-center justify-center mx-auto">
+             <CalendarIcon className="w-10 h-10" />
+             <div className="absolute w-3 h-3 bg-red-600 rounded-full animate-ping" />
+          </div>
+          
+          <div className="space-y-4">
+            <h2 className="text-4xl font-display font-black text-slate-900 tracking-tight leading-none">
+              Agenda <span className="text-red-600 italic">Suspensa</span>
+            </h2>
+            <p className="text-slate-500 font-medium leading-relaxed">
+              Desculpe, no momento não estamos aceitando novos agendamentos online.
+            </p>
+          </div>
+
+          {barbearia.motivoSuspensao && (
+            <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Recado do Estabelecimento</p>
+               <p className="text-slate-700 font-semibold">{barbearia.motivoSuspensao}</p>
+            </div>
+          )}
+
+          <div className="pt-6 border-t border-slate-100">
+             <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Tente novamente mais tarde</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white flex flex-col">
-      {/* Header */}
       <header className="bg-white/70 backdrop-blur-lg border-b border-slate-200/60 sticky top-0 z-50">
         <div className="max-w-xl mx-auto px-6 h-20 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -162,7 +198,6 @@ Nome: ${clienteNome}`;
 
       <main className="flex-1 max-w-xl w-full mx-auto p-6 pt-12 pb-24">
         <AnimatePresence mode="wait">
-          {/* STEP 1: SERVICES */}
           {step === 1 && (
             <motion.div 
               key="step1"
@@ -182,37 +217,38 @@ Nome: ${clienteNome}`;
               </div>
 
               <div className="grid gap-4">
-                {servicos.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setSelectedServico(s);
-                      setStep(2);
-                    }}
-                    className="group p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-100/50 transition-all text-left flex justify-between items-center active:scale-[0.98]"
-                  >
-                    <div className="space-y-2">
-                       <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                          <Scissors className="w-5 h-5" />
-                       </div>
-                      <div className="font-display font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{s.nome}</div>
-                      <div className="flex items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-indigo-500" /> {s.duracaoMinutos} min</span>
-                        <div className="w-1 h-1 bg-slate-200 rounded-full" />
-                        <span>Profissional</span>
+                {servicos.length === 0 ? (
+                  <p className="text-center text-slate-400 py-10">Nenhum serviço disponível no momento.</p>
+                ) : (
+                  servicos.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setSelectedServico(s);
+                        setStep(2);
+                      }}
+                      className="group p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-100/50 transition-all text-left flex justify-between items-center active:scale-[0.98]"
+                    >
+                      <div className="space-y-2">
+                         <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            <Scissors className="w-5 h-5" />
+                         </div>
+                        <div className="font-display font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{s.nome}</div>
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                          <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-indigo-500" /> {s.duracaoMinutos} min</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-3xl font-display font-black text-slate-900">
-                      <span className="text-xs font-bold text-slate-400 mr-1 italic">R$</span>
-                      {s.preco.toFixed(2)}
-                    </div>
-                  </button>
-                ))}
+                      <div className="text-3xl font-display font-black text-slate-900">
+                        <span className="text-xs font-bold text-slate-400 mr-1 italic">R$</span>
+                        {s.preco.toFixed(2)}
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </motion.div>
           )}
 
-          {/* STEP 2: DATE/TIME */}
           {step === 2 && (
             <motion.div 
               key="step2"
@@ -289,7 +325,6 @@ Nome: ${clienteNome}`;
             </motion.div>
           )}
 
-          {/* STEP 3: IDENTIFICATION */}
           {step === 3 && (
             <motion.div 
               key="step3"
@@ -308,17 +343,16 @@ Nome: ${clienteNome}`;
                 <h2 className="text-4xl lg:text-5xl font-display font-black text-slate-900 tracking-tight leading-none text-center">
                   Identifique-se <br /><span className="text-indigo-600 italic">rápido</span> e fácil.
                 </h2>
-                <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 space-y-4">
-                   <div className="flex gap-4 items-center border-b border-slate-200 pb-4">
+                <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 space-y-4 text-center">
+                   <div className="inline-flex gap-4 items-center border-b border-slate-200 pb-4 mx-auto">
                       <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
                         <CalendarIcon className="w-5 h-5" />
                       </div>
-                      <div>
+                      <div className="text-left">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resumo do Horário</p>
                         <p className="text-sm font-bold text-slate-900">{new Date(selectedDate).toLocaleDateString('pt-BR')} às {selectedTime}</p>
                       </div>
                    </div>
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center italic">Não é necessário criar conta. Apenas seu nome e WhatsApp.</p>
                 </div>
               </div>
 
@@ -339,7 +373,7 @@ Nome: ${clienteNome}`;
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-4">Celular com WhatsApp</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-4">WhatsApp (com DDD)</label>
                     <div className="relative">
                       <Phone className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-600" />
                       <input
@@ -362,10 +396,10 @@ Nome: ${clienteNome}`;
                     {creating ? (
                       <span className="flex items-center gap-3">
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Finalizando...
+                        Reservando...
                       </span>
                     ) : (
-                      <>Validar e Reservar <CheckCircle2 className="w-6 h-6" /></>
+                      <>Finalizar e Reservar <CheckCircle2 className="w-6 h-6" /></>
                     )}
                   </button>
                 </div>
@@ -373,7 +407,6 @@ Nome: ${clienteNome}`;
             </motion.div>
           )}
 
-          {/* STEP 4: SUCCESS */}
           {step === 4 && (
             <motion.div 
               key="step4"
@@ -383,20 +416,20 @@ Nome: ${clienteNome}`;
             >
               <div className="relative inline-block group">
                 <div className="absolute inset-0 bg-green-500 blur-3xl opacity-20 group-hover:opacity-40 transition-opacity" />
-                <div className="w-32 h-32 bg-green-600 rounded-[3rem] shadow-2xl shadow-green-200 flex items-center justify-center text-white relative z-10">
+                <div className="w-32 h-32 bg-green-600 rounded-[3rem] shadow-2xl shadow-green-200 flex items-center justify-center text-white relative z-10 mx-auto">
                   <CheckCircle2 className="w-16 h-16" />
                 </div>
-                <div className="absolute -top-3 -right-3 bg-slate-900 text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest z-20">
-                  Sucesso
+                <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest z-20">
+                  Aguardando Aprovação
                 </div>
               </div>
 
               <div className="space-y-6">
                 <h2 className="text-5xl lg:text-6xl font-display font-black text-slate-900 tracking-tight leading-none">
-                  Horário <br /><span className="text-green-600 italic">Reservado!</span>
+                  Reserva <br /><span className="text-indigo-600 italic">Enviada!</span>
                 </h2>
                 <p className="text-slate-500 font-medium max-w-sm mx-auto leading-relaxed">
-                  Tudo certo! Seu atendimento foi confirmado no sistema da {barbearia?.nome}. Te esperamos em breve.
+                  Sua solicitação na {barbearia?.nome} foi enviada. Agora o salão irá analisar e confirmar seu horário.
                 </p>
               </div>
 
@@ -412,7 +445,7 @@ Nome: ${clienteNome}`;
                   onClick={() => navigate("/")}
                   className="py-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest hover:text-indigo-600 transition-colors"
                 >
-                  Criar minha própria barbearia
+                  Voltar ao Início
                 </button>
               </div>
             </motion.div>
@@ -422,7 +455,7 @@ Nome: ${clienteNome}`;
 
       <footer className="py-12 text-center bg-slate-50/50">
         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">
-          Plataforma Segura Navalha&Estilo v2.0
+          Plataforma Navalha&Estilo © 2026
         </p>
       </footer>
     </div>

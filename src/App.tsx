@@ -5,6 +5,7 @@ import BookingPage from "./pages/Agenda";
 import Dashboard from "./pages/Admin";
 import SuperAdmin from "./pages/SuperAdmin";
 import { useAuth } from "./lib/auth-context";
+import ChatBot from "./components/ChatBot";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
           </SuperAdminRoute>
         } />
       </Routes>
+      <ChatBot />
     </BrowserRouter>
   );
 }

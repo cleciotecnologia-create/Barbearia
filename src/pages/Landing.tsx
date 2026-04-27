@@ -3,7 +3,7 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs } from "fire
 import { db } from "../firebase";
 import { handleFirestoreError, OperationType } from "../lib/error-handler";
 import { Scissors, Zap, Shield, Clock, ChevronRight, ExternalLink, User as UserIcon, LogOut } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth-context";
 
@@ -40,7 +40,7 @@ export default function LandingPage() {
     if (!user) {
       try {
         await signIn();
-        return; // User needs to click again after sign in or I can auto-trigger
+        return;
       } catch (err) {
         console.error(err);
         return;
@@ -59,7 +59,6 @@ export default function LandingPage() {
       .replace(/[^a-z0-9-]/g, "");
 
     try {
-      // 🧱 Criar barbearia
       const barbeariaRef = await addDoc(collection(db, "barbearias"), {
         nome: nomeBarbearia,
         slug,
@@ -71,7 +70,6 @@ export default function LandingPage() {
       const barbeariaId = barbeariaRef.id;
 
       if (barbeariaId) {
-        // ✂️ Criar serviços padrão
         const servicosPadrao = [
           { nome: "Corte Masculino", preco: 35.00, duracaoMinutos: 45, barbeariaId },
           { nome: "Corte & Barba", preco: 55.00, duracaoMinutos: 75, barbeariaId },
@@ -95,7 +93,6 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white overflow-hidden">
-      {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/70 backdrop-blur-lg border-b border-slate-200/60">
         <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
           <div className="flex items-center gap-2 font-display font-bold text-2xl tracking-tighter text-slate-900 cursor-pointer" onClick={() => navigate("/")}>
@@ -108,7 +105,6 @@ export default function LandingPage() {
           <div className="flex items-center gap-8">
             <nav className="hidden md:flex gap-8 text-sm font-semibold text-slate-500">
               <a href="#features" className="hover:text-indigo-600 transition-colors">Recursos</a>
-              <a href="#pricing" className="hover:text-indigo-600 transition-colors">Preços</a>
             </nav>
 
             <div className="h-6 w-px bg-slate-200 hidden md:block" />
@@ -120,7 +116,7 @@ export default function LandingPage() {
                     onClick={() => navigate('/super-admin')}
                     className="hidden lg:flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all"
                   >
-                    <Shield className="w-3 h-3" /> Panel SaaS
+                    <Shield className="w-3 h-3" /> Painel SaaS
                   </button>
                 )}
                 <div className="hidden md:block text-right">
@@ -131,7 +127,6 @@ export default function LandingPage() {
                 </div>
                 <div className="relative">
                   <img src={user.photoURL || ""} alt="" className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full" />
                 </div>
               </div>
             ) : (
@@ -189,7 +184,7 @@ export default function LandingPage() {
 
                 <button 
                   onClick={() => navigate(`/admin/${sucesso.slug}`)}
-                  className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold mt-8 hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 group-hover:shadow-xl group-hover:shadow-indigo-100"
+                  className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold mt-8 hover:bg-indigo-600 transition-all flex items-center justify-center gap-2"
                 >
                   Acessar Painel Agora <ChevronRight className="w-5 h-5" />
                 </button>
@@ -199,17 +194,17 @@ export default function LandingPage() {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3">
                     <span className="px-4 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold uppercase tracking-widest border border-indigo-100">
-                      SaaS Unit Manager v2.4
+                      Gestão de Unidades v2.4
                     </span>
                     <div className="h-px flex-1 bg-slate-100" />
                   </div>
                   <h1 className="text-7xl lg:text-8xl font-display font-black text-slate-900 leading-[0.9] tracking-tight">
                     Gestão <br />
-                    <span className="text-indigo-600 italic">Unificada</span> Para <br />
+                    <span className="text-indigo-600 italic">Simples</span> Para <br />
                     Barbeiros.
                   </h1>
                   <p className="text-lg text-slate-500 leading-relaxed max-w-xl">
-                    A infraestrutura definitiva para barbeiros modernos. Gerencie múltiplas unidades, serviços e agendamentos com uma única plataforma unificada.
+                    A infraestrutura definitiva para barbeiros profissionais. Gerencie agendamentos, serviços e clientes com uma plataforma unificada e potente.
                   </p>
                 </div>
 
@@ -258,7 +253,7 @@ export default function LandingPage() {
                 <div className="flex flex-wrap items-center gap-x-10 gap-y-4 pt-4">
                   {[
                     { icon: Shield, label: "Login Seguro" },
-                    { icon: Zap, label: "Instant Setup" },
+                    { icon: Zap, label: "Setup Instantâneo" },
                     { icon: Clock, label: "24/7 Automação" }
                   ].map((item, i) => (
                     <div key={i} className="flex items-center gap-2.5 text-slate-400">
@@ -281,13 +276,13 @@ export default function LandingPage() {
               <div className="aspect-[4/5] rounded-[3rem] overflow-hidden shadow-2xl shadow-slate-200 border-8 border-white p-4 bg-slate-50">
                 <img 
                   src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=2074&auto=format&fit=crop" 
-                  alt="Dashboard Mobile" 
+                  alt="Painel Mobile" 
                   className="w-full h-full object-cover rounded-[2rem] shadow-inner"
                 />
                 <div className="absolute inset-x-8 bottom-12 space-y-4">
                    <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl border border-white/50 shadow-xl">
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Platform Core</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Núcleo da Plataforma</span>
                         <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
                       </div>
                       <div className="flex items-center gap-4">
@@ -304,18 +299,16 @@ export default function LandingPage() {
               </div>
             </motion.div>
             
-            {/* Floating Background Elements */}
             <div className="absolute -top-12 -right-12 w-64 h-64 bg-indigo-100 rounded-full blur-[80px] -z-10" />
             <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-indigo-200/50 rounded-full blur-[80px] -z-10" />
           </div>
         </div>
 
-        {/* Quick Features */}
         <div className="mt-40 grid md:grid-cols-3 gap-8">
           {[
-            { icon: Clock, title: "Sincronização Real-time", desc: "Seus clientes agendam e sua agenda atualiza instantaneamente. Sem conflitos, sem estresse." },
-            { icon: Shield, title: "Segurança de Dados", desc: "Seus dados e de seus clientes protegidos com a infraestrutura cloud líder de mercado." },
-            { icon: Zap, title: "Performance Extrema", desc: "Páginas otimizadas que carregam em menos de 1 segundo para garantir a melhor experiência." }
+            { icon: Clock, title: "Tempo Real", desc: "Seus clientes agendam e sua agenda atualiza instantaneamente sem atrasos." },
+            { icon: Shield, title: "Segurança Total", desc: "Dados protegidos com criptografia e infraestrutura cloud de ponta." },
+            { icon: Zap, title: "Alta Performance", desc: "Site extremamente rápido para garantir a melhor experiência do seu cliente." }
           ].map((feature, i) => (
             <div key={i} className="p-10 rounded-[2.5rem] bg-white border border-slate-100 hover:border-indigo-600 transition-colors group">
               <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all mb-8">
@@ -337,16 +330,15 @@ export default function LandingPage() {
             <span>Navalha<span className="text-indigo-600">Estilo</span></span>
           </div>
           
-          <div className="flex gap-12 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            <a href="/super-admin" className="hover:text-indigo-600 transition-colors">Admin Geral</a>
+          <div className="flex gap-12 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+            <a href="/super-admin" className="hover:text-indigo-600 transition-colors">Super Admin</a>
             <a href="#" className="hover:text-indigo-600 transition-colors">Privacidade</a>
             <a href="#" className="hover:text-indigo-600 transition-colors">Termos</a>
           </div>
 
-          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">© 2026 PLATFORM INFRASTRUCTURE</p>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">© 2026 INFRAESTRUTURA NAVALHA&ESTILO</p>
         </div>
       </footer>
     </div>
   );
 }
-
