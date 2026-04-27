@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { handleFirestoreError, OperationType } from "../lib/error-handler";
+import { BarberChat } from "../components/BarberChat";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   LayoutDashboard, 
@@ -47,7 +48,26 @@ interface Agendamento {
   clienteWhatsApp: string;
   dataHora: string;
   servicoId: string;
+  colaboradorId?: string;
   status: string;
+}
+
+interface Colaborador {
+  id: string;
+  nome: string;
+  especialidade: string;
+  status: string;
+  comissaoTipo: 'porcentagem' | 'valor';
+  comissaoValor: number;
+}
+
+interface Movimentacao {
+  id: string;
+  descricao: string;
+  valor: number;
+  tipo: 'entrada' | 'saida';
+  data: string;
+  categoria: string;
 }
 
 interface Servico {
@@ -65,7 +85,10 @@ export default function Dashboard() {
   const [barbearia, setBarbearia] = useState<Barbearia | null>(null);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([]);
   const [activeTab, setActiveTab] = useState('agenda');
+  const [selectedBarberFilter, setSelectedBarberFilter] = useState("all");
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [clientSearchQuery, setClientSearchQuery] = useState("");
   const [isSuspending, setIsSuspending] = useState(false);
@@ -118,7 +141,15 @@ export default function Dashboard() {
 
   const stats = [
     { label: 'Total Clientes', value: clientes.length, icon: Users, color: 'text-indigo-400' },
-    { label: 'Agendamentos Hoje', value: agendamentos.filter(a => new Date(a.dataHora).toDateString() === new Date().toDateString()).length, icon: CalendarIcon, color: 'text-green-400' },
+    { 
+      label: 'Produção Filtrada', 
+      value: `R$ ${(movimentacoes.filter(m => 
+        (selectedBarberFilter === "all" || m.colaboradorId === selectedBarberFilter) &&
+        new Date(m.data).toDateString() === new Date().toDateString()
+      ).reduce((acc, curr) => curr.tipo === 'entrada' ? acc + curr.valor : acc - curr.valor, 0)).toFixed(2)}`, 
+      icon: TrendingUp, 
+      color: 'text-green-400' 
+    },
     { label: 'Pendente', value: agendamentos.filter(a => a.status === 'pendente').length, icon: Clock, color: 'text-amber-400' },
   ];
 
@@ -128,6 +159,7 @@ export default function Dashboard() {
   const [newApClientName, setNewApClientName] = useState("");
   const [newApClientWhats, setNewApClientWhats] = useState("");
   const [newApServiceId, setNewApServiceId] = useState("");
+  const [newApColaboradorId, setNewApColaboradorId] = useState("");
   const [newApDate, setNewApDate] = useState("");
   const [newApTime, setNewApTime] = useState("");
   const [isCreatingAp, setIsCreatingAp] = useState(false);
@@ -141,6 +173,7 @@ export default function Dashboard() {
         clienteNome: newApClientName,
         clienteWhatsApp: newApClientWhats,
         servicoId: newApServiceId,
+        colaboradorId: newApColaboradorId || null,
         dataHora: new Date(`${newApDate}T${newApTime}`).toISOString(),
         status: 'aprovado',
         createdAt: new Date().toISOString()
@@ -149,6 +182,7 @@ export default function Dashboard() {
       setNewApClientName("");
       setNewApClientWhats("");
       setNewApServiceId("");
+      setNewApColaboradorId("");
       setNewApDate("");
       setNewApTime("");
     } catch (err) {
@@ -159,24 +193,42 @@ export default function Dashboard() {
   };
   const availableSlots = (() => {
     if (!newApDate) return [];
+    
     const slots = [];
     for (let h = 8; h < 20; h++) {
       for (let m = 0; m < 60; m += 30) {
         slots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
       }
     }
+
     const dayAppointments = agendamentos.filter(ag => 
       ag.status !== 'cancelado' && 
       new Date(ag.dataHora).toLocaleDateString('en-CA') === newApDate
     );
-    const takenTimes = dayAppointments.map(ag => {
-      const d = new Date(ag.dataHora);
-      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+    const colabsAtivos = colaboradores.filter(c => c.status === 'ativo');
+    const totalCadeiras = colabsAtivos.length || 1;
+
+    return slots.map(slot => {
+      const appsAtTime = dayAppointments.filter(ag => {
+        const d = new Date(ag.dataHora);
+        return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}` === slot;
+      });
+
+      let isAvailable = true;
+      if (newApColaboradorId) {
+        // Se profissional específico selecionado, ver se ELE está livre
+        isAvailable = !appsAtTime.some(ag => ag.colaboradorId === newApColaboradorId);
+      } else {
+        // Se nenhum selecionado, livre se houver pelo menos uma cadeira livre
+        isAvailable = appsAtTime.length < totalCadeiras;
+      }
+
+      return {
+        time: slot,
+        isAvailable
+      };
     });
-    return slots.map(slot => ({
-      time: slot,
-      isAvailable: !takenTimes.includes(slot)
-    }));
   })();
 
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
@@ -186,6 +238,88 @@ export default function Dashboard() {
   const [serviceToDeleteId, setServiceToDeleteId] = useState<string | null>(null);
   const [savingService, setSavingService] = useState(false);
   const [deletingService, setDeletingService] = useState(false);
+
+  // Cash Flow States
+  const [showCashFlowModal, setShowCashFlowModal] = useState(false);
+  const [mDesc, setMDesc] = useState("");
+  const [mValue, setMValue] = useState("");
+  const [mType, setMType] = useState<'entrada' | 'saida'>('entrada');
+  const [mCategory, setMCategory] = useState("Venda");
+  const [isSavingM, setIsSavingM] = useState(false);
+
+  // Collaborator States
+  const [showColabModal, setShowColabModal] = useState(false);
+  const [colabName, setColabName] = useState("");
+  const [colabSpecialty, setColabSpecialty] = useState("");
+  const [colabStatus, setColabStatus] = useState("ativo");
+  const [colabComType, setColabComType] = useState<'porcentagem' | 'valor'>('porcentagem');
+  const [colabComValue, setColabComValue] = useState("");
+  const [editingColab, setEditingColab] = useState<Colaborador | null>(null);
+  const [isSavingColab, setIsSavingColab] = useState(false);
+
+  const handleSaveMovimentacao = async () => {
+    if (!barbearia || !mDesc || !mValue) return;
+    setIsSavingM(true);
+    try {
+      const data = {
+        barbeariaId: barbearia.id,
+        descricao: mDesc,
+        valor: Number(mValue),
+        tipo: mType,
+        categoria: mCategory,
+        data: new Date().toISOString(),
+      };
+      const docRef = await addDoc(collection(db, "movimentacoes"), data);
+      setMovimentacoes(prev => [{ id: docRef.id, ...data }, ...prev]);
+      setShowCashFlowModal(false);
+      setMDesc("");
+      setMValue("");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, "movimentacoes");
+    } finally {
+      setIsSavingM(false);
+    }
+  };
+
+  const handleSaveColab = async () => {
+    if (!barbearia || !colabName) return;
+    setIsSavingColab(true);
+    try {
+      const data = {
+        barbeariaId: barbearia.id,
+        nome: colabName,
+        especialidade: colabSpecialty,
+        status: colabStatus,
+        comissaoTipo: colabComType,
+        comissaoValor: Number(colabComValue) || 0,
+      };
+      if (editingColab) {
+        await updateDoc(doc(db, "colaboradores", editingColab.id), data);
+        setColaboradores(prev => prev.map(c => c.id === editingColab.id ? { ...c, ...data } : c));
+      } else {
+        const docRef = await addDoc(collection(db, "colaboradores"), data);
+        setColaboradores(prev => [...prev, { id: docRef.id, ...data }]);
+      }
+      setShowColabModal(false);
+      setColabName("");
+      setColabSpecialty("");
+      setEditingColab(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, "colaboradores");
+    } finally {
+      setIsSavingColab(false);
+    }
+  };
+
+  const deleteColab = async (id: string) => {
+    if (!confirm("Excluir colaborador?")) return;
+    try {
+      await deleteDoc(doc(db, "colaboradores", id));
+      setColaboradores(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, "colaboradores");
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -226,6 +360,18 @@ export default function Dashboard() {
         const sQuery = query(collection(db, "servicos"), where("barbeariaId", "==", bDoc.id));
         const sSnap = await getDocs(sQuery);
         setServicos(sSnap.docs.map(d => ({ id: d.id, ...d.data() } as Servico)));
+
+        const cQuery = query(collection(db, "colaboradores"), where("barbeariaId", "==", bDoc.id));
+        const cSnap = await getDocs(cQuery);
+        setColaboradores(cSnap.docs.map(d => ({ id: d.id, ...d.data() } as Colaborador)));
+
+        const mQuery = query(
+          collection(db, "movimentacoes"), 
+          where("barbeariaId", "==", bDoc.id),
+          orderBy("data", "desc")
+        );
+        const mSnap = await getDocs(mQuery).catch(() => getDocs(query(collection(db, "movimentacoes"), where("barbeariaId", "==", bDoc.id))));
+        setMovimentacoes(mSnap.docs.map(d => ({ id: d.id, ...d.data() } as Movimentacao)));
 
       } catch (err) {
         console.error(err);
@@ -274,6 +420,28 @@ export default function Dashboard() {
     setUpdatingStatus(id);
     try {
       await updateDoc(doc(db, "agendamentos", id), { status: newStatus });
+      
+      // If completed, add to cash flow
+      if (newStatus === 'concluido') {
+        const ag = agendamentos.find(a => a.id === id);
+        if (ag && barbearia) {
+          const service = servicos.find(s => s.id === ag.servicoId);
+          if (service) {
+            const data = {
+              barbeariaId: barbearia.id,
+              colaboradorId: ag.colaboradorId || null,
+              descricao: `Atendimento: ${ag.clienteNome} (${service.nome})`,
+              valor: service.preco,
+              tipo: 'entrada' as const,
+              categoria: 'Serviço',
+              data: new Date().toISOString(),
+            };
+            const mRef = await addDoc(collection(db, "movimentacoes"), data);
+            setMovimentacoes(prev => [{ id: mRef.id, ...data }, ...prev]);
+          }
+        }
+      }
+
       setAgendamentos(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `agendamentos/${id}`);
@@ -346,6 +514,8 @@ export default function Dashboard() {
           {[
             { id: 'agenda', label: 'Agenda', icon: CalendarIcon },
             { id: 'servicos', label: 'Serviços', icon: Scissors },
+            { id: 'equipe', label: 'Equipe', icon: Users },
+            { id: 'caixa', label: 'Caixa', icon: TrendingUp },
             { id: 'clientes', label: 'Clientes', icon: Users },
             { id: 'ajustes', label: 'Ajustes', icon: Settings }
           ].map((item) => (
@@ -417,16 +587,29 @@ export default function Dashboard() {
             <h2 className="text-2xl md:text-3xl font-display font-bold text-white">Próximos Atendimentos</h2>
             <p className="text-xs md:text-sm text-slate-500 mt-1">Lista atualizada de compromissos syncronizados.</p>
           </div>
-          <button 
-            onClick={() => setShowAddAppointmentModal(true)}
-            className="w-full md:w-auto px-6 py-4 bg-indigo-600 text-white rounded-2xl md:rounded-[1.5rem] text-[10px] font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
-          >
-             <CalendarIcon className="w-4 h-4" /> Novo Atendimento
-          </button>
+          <div className="flex flex-wrap items-center gap-4">
+            <select 
+              value={selectedBarberFilter}
+              onChange={(e) => setSelectedBarberFilter(e.target.value)}
+              className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-4 text-white text-[10px] font-bold uppercase tracking-widest outline-none focus:border-indigo-600 appearance-none min-w-[200px]"
+            >
+               <option value="all">Todos os Profissionais</option>
+               {colaboradores.map(c => (
+                 <option key={c.id} value={c.id}>{c.nome}</option>
+               ))}
+            </select>
+
+            <button 
+              onClick={() => setShowAddAppointmentModal(true)}
+              className="w-full md:w-auto px-6 py-4 bg-indigo-600 text-white rounded-2xl md:rounded-[1.5rem] text-[10px] font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+            >
+               <CalendarIcon className="w-4 h-4" /> Novo Atendimento
+            </button>
+          </div>
         </div>
 
                   <div className="grid gap-4">
-                    {agendamentos.length === 0 ? (
+                    {agendamentos.filter(ag => selectedBarberFilter === "all" || ag.colaboradorId === selectedBarberFilter).length === 0 ? (
                       <div className="p-20 rounded-[3rem] border-2 border-dashed border-white/5 bg-[#0D0D0D]/50 flex flex-col items-center justify-center gap-6 group">
                         <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center text-slate-600 group-hover:scale-110 group-hover:bg-indigo-600/10 group-hover:text-indigo-400 transition-all duration-500">
                           <CalendarIcon className="w-10 h-10" />
@@ -437,7 +620,9 @@ export default function Dashboard() {
                         </div>
                       </div>
                     ) : (
-                      agendamentos.map((ag) => (
+                      agendamentos
+                        .filter(ag => selectedBarberFilter === "all" || ag.colaboradorId === selectedBarberFilter)
+                        .map((ag) => (
                         <div key={ag.id} className="group p-4 md:p-6 rounded-2xl md:rounded-3xl bg-[#0D0D0D] border border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-6 md:gap-8 hover:border-indigo-500/30 transition-all">
                           <div className="flex gap-4 md:gap-8 items-center">
                             <div className="w-14 h-14 md:w-16 md:h-16 bg-indigo-600/10 rounded-xl md:rounded-2xl flex flex-col items-center justify-center border border-indigo-500/20 text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0">
@@ -459,6 +644,10 @@ export default function Dashboard() {
                                   <div className="flex items-center gap-2">
                                      <Scissors className="w-3.5 h-3.5 text-indigo-500" />
                                      {servicos.find(s => s.id === ag.servicoId)?.nome || 'Serviço'}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                     <Users className="w-3.5 h-3.5 text-indigo-500" />
+                                     {colaboradores.find(c => c.id === ag.colaboradorId)?.nome || 'Qualquer'}
                                   </div>
                                </div>
                             </div>
@@ -533,6 +722,218 @@ export default function Dashboard() {
                       ))
                     )}
                   </div>
+                </div>
+              ) : activeTab === 'equipe' ? (
+                <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <h2 className="text-3xl font-display font-bold text-white">Equipe & Cadeiras</h2>
+                      <p className="text-sm text-slate-500 mt-1">Gerencie os profissionais da sua barbearia.</p>
+                    </div>
+                    <button 
+                      onClick={() => { setEditingColab(null); setColabName(""); setColabSpecialty(""); setShowColabModal(true); }}
+                      className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+                    >
+                       <Plus className="w-4 h-4" /> Novo Colaborador
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {colaboradores.map(c => (
+                      <div key={c.id} className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-6 hover:border-indigo-500/30 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 bg-indigo-600/10 rounded-2xl flex items-center justify-center text-indigo-400 border border-indigo-500/20">
+                            <Users className="w-7 h-7" />
+                          </div>
+                          <div>
+                            <h3 className="font-display font-bold text-xl text-white">{c.nome}</h3>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                              {c.especialidade || 'Profissional'} • 
+                              {c.comissaoTipo === 'porcentagem' ? ` ${c.comissaoValor}%` : ` R$ ${c.comissaoValor}`} comissão
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white/2 rounded-2xl p-4 space-y-1">
+                           <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Produção Hoje</p>
+                           <p className="text-xl font-display font-bold text-indigo-400">
+                             R$ {movimentacoes
+                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toDateString() === new Date().toDateString())
+                               .reduce((acc, m) => acc + m.valor, 0).toFixed(2)}
+                           </p>
+                           <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-2">Comissão Agendada</p>
+                           <p className="text-sm font-display font-bold text-green-500">
+                             R$ {movimentacoes
+                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toDateString() === new Date().toDateString())
+                               .reduce((acc, m) => {
+                                 const com = c.comissaoTipo === 'porcentagem' 
+                                   ? (m.valor * c.comissaoValor / 100) 
+                                   : c.comissaoValor;
+                                 return acc + com;
+                               }, 0).toFixed(2)}
+                           </p>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                          <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em] ${
+                            c.status === 'ativo' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                          }`}>
+                            {c.status}
+                          </span>
+                          <div className="flex gap-2">
+                             <button onClick={() => { 
+                               setEditingColab(c); 
+                               setColabName(c.nome); 
+                               setColabSpecialty(c.especialidade); 
+                               setColabStatus(c.status); 
+                               setColabComType(c.comissaoTipo || 'porcentagem');
+                               setColabComValue((c.comissaoValor || 0).toString());
+                               setShowColabModal(true); 
+                             }} className="p-2 border border-white/5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5"><Pencil className="w-4 h-4" /></button>
+                             <button onClick={() => deleteColab(c.id)} className="p-2 border border-white/5 rounded-lg text-red-500/50 hover:text-red-500 hover:bg-red-500/5"><X className="w-4 h-4" /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {showColabModal && (
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[120] grid place-items-center p-6">
+                       <div className="bg-[#0D0D0D] border border-white/10 p-10 rounded-[3rem] max-w-md w-full space-y-8">
+                          <h3 className="text-3xl font-display font-bold text-white">{editingColab ? 'Editar' : 'Novo'} Colaborador</h3>
+                          <div className="space-y-6">
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Nome</label>
+                                <input type="text" value={colabName} onChange={e => setColabName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 transition-all" />
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Especialidade/Cadeira</label>
+                                <input type="text" value={colabSpecialty} placeholder="Ex: Cadeira 01 / Corte Moderno" onChange={e => setColabSpecialty(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 transition-all" />
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Status</label>
+                                <select value={colabStatus} onChange={e => setColabStatus(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 appearance-none">
+                                   <option value="ativo" className="bg-black">Ativo</option>
+                                   <option value="ausente" className="bg-black">Ausente</option>
+                                   <option value="desligado" className="bg-black">Desligado</option>
+                                </select>
+                             </div>
+                             
+                             <div className="grid grid-cols-2 gap-4">
+                               <div className="space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Tipo Comissão</label>
+                                  <select value={colabComType} onChange={e => setColabComType(e.target.value as 'porcentagem' | 'valor')} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 appearance-none">
+                                     <option value="porcentagem" className="bg-black">Porcentagem (%)</option>
+                                     <option value="valor" className="bg-black">Valor Fixo (R$)</option>
+                                  </select>
+                               </div>
+                               <div className="space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Valor Comissão</label>
+                                  <input type="number" value={colabComValue} onChange={e => setColabComValue(e.target.value)} placeholder="0" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 transition-all" />
+                               </div>
+                             </div>
+
+                             <div className="flex gap-4">
+                                <button onClick={() => setShowColabModal(false)} className="flex-1 py-5 bg-white/5 rounded-2xl text-[10px] font-bold uppercase text-white">Cancelar</button>
+                                <button onClick={handleSaveColab} className="flex-1 py-5 bg-indigo-600 rounded-2xl text-[10px] font-bold uppercase text-white shadow-lg shadow-indigo-600/20">{isSavingColab ? 'Salvando...' : 'Confirmar'}</button>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'caixa' ? (
+                <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <h2 className="text-3xl font-display font-bold text-white">Fluxo de Caixa</h2>
+                      <p className="text-sm text-slate-500 mt-1">Controle financeiro diário e histórico.</p>
+                    </div>
+                    <button 
+                      onClick={() => setShowCashFlowModal(true)}
+                      className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
+                    >
+                       <Plus className="w-4 h-4" /> Nova Movimentação
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Entradas (Hoje)</p>
+                        <p className="text-3xl font-display font-black text-green-500">R$ {movimentacoes.filter(m => m.tipo === 'entrada' && new Date(m.data).toDateString() === new Date().toDateString()).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
+                     </div>
+                     <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saídas (Hoje)</p>
+                        <p className="text-3xl font-display font-black text-red-500">R$ {movimentacoes.filter(m => m.tipo === 'saida' && new Date(m.data).toDateString() === new Date().toDateString()).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
+                     </div>
+                     <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saldo Geral</p>
+                        <p className="text-3xl font-display font-black text-indigo-400">R$ {movimentacoes.reduce((acc, m) => m.tipo === 'entrada' ? acc + m.valor : acc - m.valor, 0).toFixed(2)}</p>
+                     </div>
+                  </div>
+
+                  <div className="bg-[#0D0D0D] border border-white/5 rounded-[3rem] overflow-hidden">
+                     <table className="w-full text-left">
+                        <thead className="bg-white/5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                           <tr>
+                              <th className="p-6">Data</th>
+                              <th className="p-6">Descrição</th>
+                              <th className="p-6">Categoria</th>
+                              <th className="p-6 text-right">Valor</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                           {movimentacoes.map(m => (
+                             <tr key={m.id} className="hover:bg-white/2 transition-colors">
+                                <td className="p-6 text-xs text-slate-400">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                                <td className="p-6 font-bold text-white text-sm">{m.descricao}</td>
+                                <td className="p-6 text-[10px] uppercase font-black text-slate-600">{m.categoria}</td>
+                                <td className={`p-6 text-right font-display font-bold ${m.tipo === 'entrada' ? 'text-green-500' : 'text-red-500'}`}>
+                                   {m.tipo === 'entrada' ? '+' : '-'} R$ {m.valor.toFixed(2)}
+                                </td>
+                             </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+
+                  {showCashFlowModal && (
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[120] grid place-items-center p-6">
+                       <div className="bg-[#0D0D0D] border border-white/10 p-10 rounded-[3rem] max-w-md w-full space-y-8">
+                          <h3 className="text-3xl font-display font-bold text-white">Lançar Movimentação</h3>
+                          <div className="space-y-6">
+                             <div className="flex gap-4 p-2 bg-white/5 rounded-2xl border border-white/10">
+                                <button onClick={() => setMType('entrada')} className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${mType === 'entrada' ? 'bg-green-600 text-white shadow-lg shadow-green-600/20' : 'text-slate-500'}`}>Entrada</button>
+                                <button onClick={() => setMType('saida')} className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${mType === 'saida' ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'text-slate-500'}`}>Saída</button>
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Descrição</label>
+                                <input type="text" value={mDesc} onChange={e => setMDesc(e.target.value)} placeholder="Ex: Pagamento Cliente / Aluguel" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 transition-all" />
+                             </div>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Valor (R$)</label>
+                                   <input type="number" value={mValue} onChange={e => setMValue(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Categoria</label>
+                                   <select value={mCategory} onChange={e => setMCategory(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white outline-none focus:border-indigo-600 appearance-none">
+                                      <option value="Serviço" className="bg-black">Serviço</option>
+                                      <option value="Produto" className="bg-black">Produto</option>
+                                      <option value="Aluguel" className="bg-black">Aluguel</option>
+                                      <option value="Salários" className="bg-black">Salários</option>
+                                      <option value="Outros" className="bg-black">Outros</option>
+                                   </select>
+                                </div>
+                             </div>
+                             <div className="flex gap-4 pt-4">
+                                <button onClick={() => setShowCashFlowModal(false)} className="flex-1 py-5 bg-white/5 rounded-2xl text-[10px] font-bold uppercase text-white">Cancelar</button>
+                                <button onClick={handleSaveMovimentacao} className="flex-1 py-5 bg-indigo-600 rounded-2xl text-[10px] font-bold uppercase text-white shadow-lg shadow-indigo-600/20">{isSavingM ? 'Lançando...' : 'Confirmar'}</button>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                  )}
                 </div>
               ) : activeTab === 'servicos' ? (
                 <div className="space-y-8 md:space-y-12">
@@ -872,6 +1273,20 @@ export default function Dashboard() {
                       </select>
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Profissional / Cadeira</label>
+                      <select 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 font-bold text-white outline-none focus:border-indigo-600 transition-all appearance-none"
+                        value={newApColaboradorId}
+                        onChange={(e) => setNewApColaboradorId(e.target.value)}
+                      >
+                        <option value="">Qualquer Disponível</option>
+                        {colaboradores.filter(c => c.status === 'ativo').map(c => (
+                          <option key={c.id} value={c.id} className="bg-[#0D0D0D]">{c.nome} ({c.especialidade})</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="space-y-4">
                       <div className="flex items-center justify-between px-4">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Data do Atendimento</label>
@@ -936,6 +1351,12 @@ export default function Dashboard() {
           </AnimatePresence>
         </div>
       </main>
+      {barbearia && (
+        <BarberChat 
+          barbeariaName={barbearia.nome} 
+          agendaUrl={agendaUrl} 
+        />
+      )}
     </div>
   );
 }

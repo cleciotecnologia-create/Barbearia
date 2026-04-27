@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { handleFirestoreError, OperationType } from "../lib/error-handler";
+import { BarberChat } from "../components/BarberChat";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Calendar as CalendarIcon, 
@@ -31,20 +32,61 @@ interface Servico {
   duracaoMinutos: number;
 }
 
+interface Colaborador {
+  id: string;
+  nome: string;
+  especialidade: string;
+  status: string;
+}
+
 export default function BookingPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [barbearia, setBarbearia] = useState<Barbearia | null>(null);
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [agendamentos, setAgendamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState(1); // 1: Serviço, 2: Data/Hora, 3: Identificação, 4: Sucesso
+  const [step, setStep] = useState(1); // 1: Serviço, 2: Profissional, 3: Data/Hora, 4: Identificação, 5: Sucesso
 
   const [selectedServico, setSelectedServico] = useState<Servico | null>(null);
+  const [selectedColaborador, setSelectedColaborador] = useState<Colaborador | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [clienteWhatsApp, setClienteWhatsApp] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const availableSlots = (() => {
+    if (!selectedDate) return [];
+    
+    const slots = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30"];
+    
+    const dayAppointments = agendamentos.filter(ag => 
+      ag.status !== 'cancelado' && 
+      new Date(ag.dataHora).toLocaleDateString('en-CA') === selectedDate
+    );
+
+    const activeColabs = colaboradores.filter(c => c.status === 'ativo');
+    const totalCadeiras = activeColabs.length || 1;
+
+    return slots.map(slot => {
+      const appsAtTime = dayAppointments.filter(ag => {
+        const d = new Date(ag.dataHora);
+        const t = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        return t === slot;
+      });
+
+      let isAvailable = true;
+      if (selectedColaborador) {
+        isAvailable = !appsAtTime.some(ag => ag.colaboradorId === selectedColaborador.id);
+      } else {
+        isAvailable = appsAtTime.length < totalCadeiras;
+      }
+
+      return { time: slot, isAvailable };
+    });
+  })();
 
   useEffect(() => {
     async function fetchData() {
@@ -72,6 +114,15 @@ export default function BookingPage() {
         })) as Servico[];
         
         setServicos(sList);
+
+        const cQuery = query(collection(db, "colaboradores"), where("barbeariaId", "==", bDoc.id), where("status", "==", "ativo"));
+        const cSnap = await getDocs(cQuery);
+        setColaboradores(cSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Colaborador)));
+
+        const agQuery = query(collection(db, "agendamentos"), where("barbeariaId", "==", bDoc.id));
+        const agSnap = await getDocs(agQuery);
+        setAgendamentos(agSnap.docs.map(doc => doc.data()));
+
       } catch (err) {
         console.error(err);
         handleFirestoreError(err, OperationType.GET, "barbearia-fetch");
@@ -92,6 +143,7 @@ export default function BookingPage() {
       await addDoc(collection(db, "agendamentos"), {
         barbeariaId: barbearia.id,
         servicoId: selectedServico.id,
+        colaboradorId: selectedColaborador?.id || null,
         clienteNome,
         clienteWhatsApp,
         dataHora: dataHora.toISOString(),
@@ -99,7 +151,7 @@ export default function BookingPage() {
         createdAt: serverTimestamp()
       });
 
-      setStep(4);
+      setStep(5);
     } catch (err) {
       console.error(err);
       handleFirestoreError(err, OperationType.CREATE, "agendamentos");
@@ -113,6 +165,7 @@ export default function BookingPage() {
     const message = `Olá, gostaria de confirmar meu agendamento:
 Barbearia: ${barbearia.nome}
 Serviço: ${selectedServico.nome}
+Profissional: ${selectedColaborador?.nome || 'Qualquer'}
 Data: ${new Date(selectedDate).toLocaleDateString('pt-BR')}
 Hora: ${selectedTime}
 Nome: ${clienteNome}`;
@@ -185,7 +238,7 @@ Nome: ${clienteNome}`;
               </div>
             </div>
           </div>
-          {step > 1 && step < 4 && (
+          {step > 1 && step < 5 && (
             <button 
               onClick={() => setStep(step - 1)}
               className="px-4 py-2 bg-slate-50 text-slate-400 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center gap-1.5"
@@ -208,12 +261,12 @@ Nome: ${clienteNome}`;
             >
               <div className="space-y-4">
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold uppercase tracking-widest border border-indigo-100">
-                  Passo 01 de 03
+                  Passo 01 de 04
                 </span>
                 <h2 className="text-4xl lg:text-5xl font-display font-black text-slate-900 tracking-tight leading-none">
                   O que vamos <span className="text-indigo-600 italic">fazer</span> hoje?
                 </h2>
-                <p className="text-slate-500 font-medium">Selecione o serviço desejado para ver os horários disponíveis.</p>
+                <p className="text-slate-500 font-medium">Selecione o serviço desejado para ver os profissionais disponíveis.</p>
               </div>
 
               <div className="grid gap-4">
@@ -252,6 +305,69 @@ Nome: ${clienteNome}`;
           {step === 2 && (
             <motion.div 
               key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-10"
+            >
+              <div className="space-y-4">
+                <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold uppercase tracking-widest border border-indigo-100">
+                  Passo 02 de 04
+                </span>
+                <h2 className="text-4xl lg:text-5xl font-display font-black text-slate-900 tracking-tight leading-none">
+                  Com <span className="text-indigo-600 italic">quem</span> quer cortar?
+                </h2>
+                <p className="text-slate-500 font-medium">Escolha o profissional de sua preferência.</p>
+              </div>
+
+              <div className="grid gap-4">
+                <button
+                  onClick={() => {
+                    setSelectedColaborador(null);
+                    setStep(3);
+                  }}
+                  className="group p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:border-indigo-600 transition-all text-left flex justify-between items-center"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                      <User className="w-6 h-6" />
+                    </div>
+                    <div>
+                       <p className="font-display font-bold text-lg text-slate-900 uppercase">Qualquer Disponível</p>
+                       <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Menor tempo de espera</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                </button>
+
+                {colaboradores.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setSelectedColaborador(c);
+                      setStep(3);
+                    }}
+                    className="group p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:border-indigo-600 transition-all text-left flex justify-between items-center"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                        <span className="font-display font-black text-xl">{c.nome.charAt(0)}</span>
+                      </div>
+                      <div>
+                         <p className="font-display font-bold text-lg text-slate-900 uppercase">{c.nome}</p>
+                         <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">{c.especialidade}</p>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {step === 3 && (
+            <motion.div 
+              key="step3"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -260,7 +376,7 @@ Nome: ${clienteNome}`;
               <div className="space-y-6">
                  <div className="flex items-center gap-3">
                   <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold uppercase tracking-widest border border-indigo-100">
-                    Passo 02 de 03
+                    Passo 03 de 04
                   </span>
                   <div className="flex-1 h-px bg-slate-100" />
                 </div>
@@ -268,13 +384,24 @@ Nome: ${clienteNome}`;
                   Escolha seu <br /><span className="text-indigo-600 italic">melhor</span> momento.
                 </h2>
                 
-                <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex items-center justify-center gap-4 group">
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                    <Scissors className="w-5 h-5" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                      <Scissors className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-1">Serviço</p>
+                      <p className="text-xs font-bold text-slate-900 uppercase truncate max-w-[150px]">{selectedServico?.nome}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-1">Serviço Selecionado</p>
-                    <p className="text-sm font-bold text-slate-900 uppercase">{selectedServico?.nome}</p>
+                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                      <User className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-1">Profissional</p>
+                      <p className="text-xs font-bold text-slate-900 uppercase truncate max-w-[150px]">{selectedColaborador?.nome || 'Qualquer'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -295,18 +422,21 @@ Nome: ${clienteNome}`;
 
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-4">Horários Disponíveis</label>
-                  <div className="grid grid-cols-4 gap-3">
-                    {["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"].map((t) => (
+                  <div className="grid grid-cols-4 gap-3 bg-white p-6 rounded-3xl border border-slate-100">
+                    {availableSlots.map(({ time, isAvailable }) => (
                       <button
-                        key={t}
-                        onClick={() => setSelectedTime(t)}
+                        key={time}
+                        disabled={!isAvailable}
+                        onClick={() => setSelectedTime(time)}
                         className={`py-4 rounded-2xl text-sm font-bold transition-all border ${
-                          selectedTime === t 
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-xl shadow-indigo-600/30 active:scale-95" 
-                            : "bg-white text-slate-500 border-slate-100 hover:border-indigo-600 hover:text-indigo-600"
+                          !isAvailable
+                            ? "bg-slate-50 text-slate-200 border-transparent cursor-not-allowed"
+                            : selectedTime === time 
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-xl shadow-indigo-600/30 active:scale-95" 
+                              : "bg-white text-slate-500 border-slate-100 hover:border-indigo-600 hover:text-indigo-600"
                         }`}
                       >
-                        {t}
+                        {time}
                       </button>
                     ))}
                   </div>
@@ -315,7 +445,7 @@ Nome: ${clienteNome}`;
                 <div className="pt-6">
                   <button
                     disabled={!selectedDate || !selectedTime}
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(4)}
                     className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-bold text-lg hover:bg-indigo-600 transition-all shadow-2xl shadow-slate-200 flex items-center justify-center gap-3 group active:scale-95 disabled:bg-slate-200 disabled:shadow-none"
                   >
                     Confirmar Horário <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
@@ -325,9 +455,9 @@ Nome: ${clienteNome}`;
             </motion.div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <motion.div 
-              key="step3"
+              key="step4"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -344,13 +474,18 @@ Nome: ${clienteNome}`;
                   Identifique-se <br /><span className="text-indigo-600 italic">rápido</span> e fácil.
                 </h2>
                 <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 space-y-4 text-center">
-                   <div className="inline-flex gap-4 items-center border-b border-slate-200 pb-4 mx-auto">
-                      <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-                        <CalendarIcon className="w-5 h-5" />
+                   <div className="inline-flex flex-wrap justify-center gap-4 items-center border-b border-slate-200 pb-4 mx-auto">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+                          <CalendarIcon className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs font-bold text-slate-900">{new Date(selectedDate).toLocaleDateString('pt-BR')} às {selectedTime}</p>
                       </div>
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resumo do Horário</p>
-                        <p className="text-sm font-bold text-slate-900">{new Date(selectedDate).toLocaleDateString('pt-BR')} às {selectedTime}</p>
+                      <div className="flex items-center gap-2">
+                         <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+                           <User className="w-4 h-4" />
+                         </div>
+                         <p className="text-xs font-bold text-slate-900">{selectedColaborador?.nome || 'Qualquer'}</p>
                       </div>
                    </div>
                 </div>
@@ -407,9 +542,9 @@ Nome: ${clienteNome}`;
             </motion.div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <motion.div 
-              key="step4"
+              key="step5"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="text-center space-y-12 py-16"
@@ -458,6 +593,12 @@ Nome: ${clienteNome}`;
           Plataforma Navalha&Estilo © 2026
         </p>
       </footer>
+      {barbearia && (
+        <BarberChat 
+          barbeariaName={barbearia.nome} 
+          agendaUrl={window.location.href} 
+        />
+      )}
     </div>
   );
 }

@@ -64,7 +64,7 @@ service cloud.firestore {
       return data.clienteNome is string && data.clienteNome.size() <= 100
           && data.clienteWhatsApp is string && data.clienteWhatsApp.size() <= 20
           && data.dataHora is string 
-          && data.status in ['pendente', 'confirmado', 'cancelado', 'concluido']
+          && data.status in ['pendente', 'confirmado', 'cancelado', 'concluido', 'aprovado']
           && isValidId(data.barbeariaId)
           && isValidId(data.servicoId);
     }
@@ -76,6 +76,40 @@ service cloud.firestore {
       allow get: if true; 
       allow list: if isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/barbearias/$(resource.data.barbeariaId)) && get(/databases/$(database)/documents/barbearias/$(resource.data.barbeariaId)).data.ownerId == request.auth.uid); 
       allow update: if isAdmin() || (isSignedIn() && isOwner(existing().barbeariaId));
+      allow delete: if isAdmin();
+    }
+
+    // Colaborador Validation
+    function isValidColaborador(data) {
+      return data.nome is string && data.nome.size() <= 100
+          && data.status in ['ativo', 'ausente', 'desligado']
+          && data.comissaoTipo in ['porcentagem', 'valor']
+          && data.comissaoValor is number
+          && isValidId(data.barbeariaId);
+    }
+
+    match /colaboradores/{colaboradorId} {
+      allow list: if true;
+      allow get: if true;
+      allow create: if isSignedIn() && isValidColaborador(incoming()) && isOwner(incoming().barbeariaId);
+      allow update: if isSignedIn() && isOwner(existing().barbeariaId) && isValidColaborador(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().barbeariaId);
+    }
+
+    // Movimentacao Validation
+    function isValidMovimentacao(data) {
+      return data.descricao is string && data.descricao.size() <= 200
+          && data.valor is number && data.valor >= 0
+          && data.tipo in ['entrada', 'saida']
+          && data.data is string
+          && isValidId(data.barbeariaId);
+    }
+
+    match /movimentacoes/{movimentacaoId} {
+      allow list: if isSignedIn() && isOwner(resource.data.barbeariaId);
+      allow get: if isSignedIn() && isOwner(resource.data.barbeariaId);
+      allow create: if isSignedIn() && isValidMovimentacao(incoming()) && isOwner(incoming().barbeariaId);
+      allow update: if false; // Transactions are immutable for audit
       allow delete: if isAdmin();
     }
   }

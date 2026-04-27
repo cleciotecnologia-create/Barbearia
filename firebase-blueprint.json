@@ -42,12 +42,42 @@
       "properties": {
         "barbeariaId": { "type": "string" },
         "servicoId": { "type": "string" },
+        "colaboradorId": { "type": "string", "description": "ID do colaborador que realizará o atendimento" },
         "clienteNome": { "type": "string" },
         "clienteWhatsApp": { "type": "string" },
         "dataHora": { "type": "string", "format": "date-time" },
         "status": { "type": "string", "enum": ["pendente", "confirmado", "cancelado", "concluido"] }
       },
       "required": ["barbeariaId", "servicoId", "clienteNome", "clienteWhatsApp", "dataHora", "status"]
+    },
+    "Colaborador": {
+      "title": "Colaborador",
+      "description": "Um barbeiro ou profissional da barbearia.",
+      "type": "object",
+      "properties": {
+        "barbeariaId": { "type": "string" },
+        "nome": { "type": "string" },
+        "especialidade": { "type": "string" },
+        "status": { "type": "string", "enum": ["ativo", "ausente", "desligado"] },
+        "comissaoTipo": { "type": "string", "enum": ["porcentagem", "valor"] },
+        "comissaoValor": { "type": "number" }
+      },
+      "required": ["barbeariaId", "nome", "status", "comissaoTipo", "comissaoValor"]
+    },
+    "Movimentacao": {
+      "title": "Movimentação Financeira",
+      "description": "Registro de entrada ou saída no fluxo de caixa.",
+      "type": "object",
+      "properties": {
+        "barbeariaId": { "type": "string" },
+        "colaboradorId": { "type": "string", "description": "ID do colaborador se for produção individual" },
+        "descricao": { "type": "string" },
+        "valor": { "type": "number" },
+        "tipo": { "type": "string", "enum": ["entrada", "saida"] },
+        "data": { "type": "string", "format": "date-time" },
+        "categoria": { "type": "string" }
+      },
+      "required": ["barbeariaId", "descricao", "valor", "tipo", "data"]
     }
   },
   "firestore": {
@@ -62,6 +92,14 @@
     "agendamentos": {
       "schema": "Agendamento",
       "description": "Coleção de agendamentos realizados."
+    },
+    "colaboradores": {
+      "schema": "Colaborador",
+      "description": "Coleção de colaboradores da barbearia."
+    },
+    "movimentacoes": {
+      "schema": "Movimentacao",
+      "description": "Coleção de registros de caixa."
     }
   }
 }
