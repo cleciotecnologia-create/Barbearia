@@ -56,7 +56,7 @@ interface Servico {
 export default function Dashboard() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { user, isAdmin: isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [barbearia, setBarbearia] = useState<Barbearia | null>(null);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
@@ -88,7 +88,7 @@ export default function Dashboard() {
         const bData = { id: bDoc.id, ...bDoc.data() } as Barbearia;
         
         // Security check: must be owner or super admin
-        if (bData.ownerId !== user.uid && !isSuperAdmin) {
+        if (bData.ownerId !== user.uid && !isAdmin && !isSuperAdmin) {
           navigate("/");
           return;
         }
@@ -122,7 +122,7 @@ export default function Dashboard() {
       }
     }
     loadData();
-  }, [slug, navigate]);
+  }, [slug, navigate, user, isAdmin, isSuperAdmin]);
 
   async function handleSaveService() {
     if (!barbearia || !serviceName || !servicePrice) return;

@@ -24,19 +24,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Check for specific Super Admin email
-        setIsSuperAdmin(user.email === SUPER_ADMIN_EMAIL);
-        
-        // Check for Unit Admin in Firestore
-        const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-        setIsAdmin(adminDoc.exists());
-      } else {
-        setIsAdmin(false);
-        setIsSuperAdmin(false);
+      try {
+        setUser(user);
+        if (user) {
+          // Check for specific Super Admin email
+          setIsSuperAdmin(user.email === SUPER_ADMIN_EMAIL);
+          
+          // Check for Unit Admin in Firestore
+          try {
+            const adminDoc = await getDoc(doc(db, 'admins', user.uid));
+            setIsAdmin(adminDoc.exists());
+          } catch (e) {
+            console.error("Error checking admin status:", e);
+            setIsAdmin(false);
+          }
+        } else {
+          setIsAdmin(false);
+          setIsSuperAdmin(false);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsubscribe;
   }, []);

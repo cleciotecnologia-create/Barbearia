@@ -10,6 +10,13 @@
 @layer base {
   body {
     @apply antialiased text-slate-900 bg-[#FDFDFD];
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+    user-select: none;
+  }
+
+  input, textarea {
+    user-select: text;
   }
 
   h1, h2, h3, h4, h5, h6 {
