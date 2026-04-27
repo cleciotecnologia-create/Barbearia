@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isOwner(barbeariaId) { 
+      return isSignedIn() && get(/databases/$(database)/documents/barbearias/$(barbeariaId)).data.ownerId == request.auth.uid;
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && request.auth.uid == adminId;
+      allow write: if false; // Only via console
+    }
+
+    // Barbearia Validation
+    function isValidBarbearia(data) {
+      return data.nome is string && data.nome.size() <= 100
+          && data.slug is string && data.slug.size() <= 100
+          && data.status in ['ativa', 'inativa']
+          && data.ownerId == request.auth.uid
+          && data.createdAt is timestamp;
+    }
+
+    match /barbearias/{barbeariaId} {
+      allow get, list: if true; 
+      allow create: if isSignedIn() && isValidBarbearia(incoming()); 
+      allow update: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid && isValidBarbearia(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    // Servico Validation
+    function isValidServico(data) {
+      return data.nome is string && data.nome.size() <= 100
+          && data.preco is number && data.preco >= 0
+          && data.duracaoMinutos is number && data.duracaoMinutos > 0
+          && isValidId(data.barbeariaId);
+    }
+
+    match /servicos/{servicoId} {
+      allow list: if true; 
+      allow get: if true;
+      allow create: if isSignedIn() && isValidServico(incoming())
+                   && (isAdmin() || isOwner(incoming().barbeariaId));
+      allow update: if isSignedIn() && (isAdmin() || isOwner(existing().barbeariaId)) && isValidServico(incoming());
+      allow delete: if isSignedIn() && (isAdmin() || isOwner(existing().barbeariaId));
+    }
+
+    // Agendamento Validation
+    function isValidAgendamento(data) {
+      return data.clienteNome is string && data.clienteNome.size() <= 100
+          && data.clienteWhatsApp is string && data.clienteWhatsApp.size() <= 20
+          && data.dataHora is string 
+          && data.status in ['pendente', 'confirmado', 'cancelado', 'concluido']
+          && isValidId(data.barbeariaId)
+          && isValidId(data.servicoId);
+    }
+
+    match /agendamentos/{agendamentoId} {
+      allow create: if isValidAgendamento(incoming())
+                   && exists(/databases/$(database)/documents/barbearias/$(incoming().barbeariaId))
+                   && exists(/databases/$(database)/documents/servicos/$(incoming().servicoId));
+      allow get: if true; 
+      allow list: if isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/barbearias/$(resource.data.barbeariaId)) && get(/databases/$(database)/documents/barbearias/$(resource.data.barbeariaId)).data.ownerId == request.auth.uid); 
+      allow update: if isAdmin() || (isSignedIn() && isOwner(existing().barbeariaId));
+      allow delete: if isAdmin();
+    }
+  }
+}

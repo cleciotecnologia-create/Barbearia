@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Barbearia": {
+      "title": "Barbearia",
+      "description": "Uma barbearia cadastrada na plataforma.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string", "description": "Nome da barbearia" },
+        "slug": { "type": "string", "description": "Slug para URL única" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de criação" },
+        "status": { "type": "string", "enum": ["ativa", "inativa"], "description": "Status atual" },
+        "ownerId": { "type": "string", "description": "UID do dono da barbearia" }
+      },
+      "required": ["nome", "slug", "createdAt", "status", "ownerId"]
+    },
+    "Admin": {
+      "title": "Super Admin",
+      "description": "Administrador global da plataforma.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["super-admin"] }
+      },
+      "required": ["email", "role"]
+    },
+    "Servico": {
+      "title": "Serviço",
+      "description": "Um serviço oferecido por uma barbearia.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string", "description": "Nome do serviço" },
+        "preco": { "type": "number", "description": "Preço em centavos ou decimais" },
+        "duracaoMinutos": { "type": "number", "description": "Duração média em minutos" },
+        "barbeariaId": { "type": "string", "description": "ID da barbearia proprietária" }
+      },
+      "required": ["nome", "preco", "duracaoMinutos", "barbeariaId"]
+    },
+    "Agendamento": {
+      "title": "Agendamento",
+      "description": "Um horário reservado por um cliente.",
+      "type": "object",
+      "properties": {
+        "barbeariaId": { "type": "string" },
+        "servicoId": { "type": "string" },
+        "clienteNome": { "type": "string" },
+        "clienteWhatsApp": { "type": "string" },
+        "dataHora": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pendente", "confirmado", "cancelado", "concluido"] }
+      },
+      "required": ["barbeariaId", "servicoId", "clienteNome", "clienteWhatsApp", "dataHora", "status"]
+    }
+  },
+  "firestore": {
+    "barbearias": {
+      "schema": "Barbearia",
+      "description": "Coleção raiz de barbearias."
+    },
+    "servicos": {
+      "schema": "Servico",
+      "description": "Coleção de serviços oferecidos."
+    },
+    "agendamentos": {
+      "schema": "Agendamento",
+      "description": "Coleção de agendamentos realizados."
+    }
+  }
+}
