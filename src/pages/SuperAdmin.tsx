@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, updateDoc, doc, addDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../lib/auth-context";
 import { motion, AnimatePresence } from "motion/react";
@@ -14,7 +14,9 @@ import {
   ArrowUpRight,
   ChevronRight,
   Plus,
-  X
+  X,
+  Edit,
+  Trash2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -35,6 +37,10 @@ export default function SuperAdmin() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newNome, setNewNome] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -112,6 +118,34 @@ export default function SuperAdmin() {
       alert("Erro ao provisionar unidade. Verifique o console.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleUpdate() {
+    if (!editingId || !editNome.trim() || updating) return;
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, "barbearias", editingId), { nome: editNome });
+      setBarbearias(prev => prev.map(b => b.id === editingId ? { ...b, nome: editNome } : b));
+      setEditingId(null);
+      setEditNome("");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar unidade.");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Tem certeza que deseja DELETAR esta instância? Esta ação é irreversível e removerá apenas o registro da barbearia (serviços/agendamentos permanecerão órfãos).")) return;
+    
+    try {
+      await deleteDoc(doc(db, "barbearias", id));
+      setBarbearias(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao deletar unidade.");
     }
   }
 
@@ -272,6 +306,16 @@ export default function SuperAdmin() {
                         <td className="p-8">
                           <div className="flex items-center justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
                             <button 
+                              onClick={() => {
+                                setEditingId(b.id);
+                                setEditNome(b.nome);
+                              }}
+                              className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-amber-600 transition-all"
+                              title="Edit Details"
+                            >
+                              <Edit className="w-5 h-5" />
+                            </button>
+                            <button 
                               onClick={() => toggleStatus(b.id, b.status)}
                               className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                                 b.status === 'ativa' 
@@ -280,6 +324,13 @@ export default function SuperAdmin() {
                               }`}
                             >
                               {b.status === 'ativa' ? 'Terminate' : 'Re-Deploy'}
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(b.id)}
+                              className="w-10 h-10 bg-rose-600/10 border border-rose-500/20 rounded-xl flex items-center justify-center text-rose-500 hover:text-white hover:bg-rose-600 transition-all"
+                              title="Delete Path"
+                            >
+                              <Trash2 className="w-5 h-5" />
                             </button>
                             <a 
                               href={`/agenda/${b.slug}`} 
@@ -402,6 +453,61 @@ export default function SuperAdmin() {
                   className="w-full bg-indigo-600 text-white py-6 rounded-[2rem] font-bold text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creating ? "Deploying..." : "Finalize Provisioning"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingId && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingId(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-[#0D0D0D] border border-white/10 rounded-[3rem] p-10 relative z-10 shadow-2xl"
+            >
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h3 className="text-2xl font-display font-black text-white">Update Instance</h3>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Refining deployed metadata</p>
+                </div>
+                <button 
+                  onClick={() => setEditingId(null)}
+                  className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-slate-500 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-4">Nome da Barbearia / Salão</label>
+                  <input 
+                    type="text" 
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/10 p-6 rounded-[1.8rem] text-sm font-bold text-white outline-none focus:border-indigo-600 transition-all"
+                    value={editNome}
+                    onChange={(e) => setEditNome(e.target.value)}
+                  />
+                </div>
+
+                <button 
+                  disabled={!editNome.trim() || updating}
+                  onClick={handleUpdate}
+                  className="w-full bg-amber-600 text-white py-6 rounded-[2rem] font-bold text-sm uppercase tracking-widest hover:bg-amber-700 transition-all shadow-xl shadow-amber-600/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updating ? "Updating..." : "Commit Changes"}
                 </button>
               </div>
             </motion.div>
