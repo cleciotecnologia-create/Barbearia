@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Scissors, CalendarIcon } from 'lucide-react';
+import { MessageCircle, X, Send, Scissors, CalendarIcon, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getBarberChatResponse } from '../services/geminiService';
 
@@ -11,9 +11,10 @@ interface ChatMessage {
 interface BarberChatProps {
   barbeariaName: string;
   agendaUrl: string;
+  onOpenBooking?: () => void;
 }
 
-export const BarberChat: React.FC<BarberChatProps> = ({ barbeariaName, agendaUrl }) => {
+export const BarberChat: React.FC<BarberChatProps> = ({ barbeariaName, agendaUrl, onOpenBooking }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -66,12 +67,27 @@ export const BarberChat: React.FC<BarberChatProps> = ({ barbeariaName, agendaUrl
                   <p className="text-[10px] opacity-70 mt-1 font-medium">Chat de Atendimento</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              
+              <div className="flex items-center gap-2">
+                {onOpenBooking && (
+                  <button 
+                    onClick={() => {
+                      onOpenBooking();
+                      setIsOpen(false);
+                    }}
+                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-[8px] font-black uppercase tracking-widest transition-colors flex items-center gap-1"
+                    title="Novo Agendamento"
+                  >
+                    <Plus className="w-3 h-3" /> Registrar
+                  </button>
+                )}
+                <button 
+                  onClick={() => setIsOpen(false)}
+                  className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Messages */}

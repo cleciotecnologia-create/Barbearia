@@ -597,6 +597,7 @@ Nome: ${clienteNome}`;
         <BarberChat 
           barbeariaName={barbearia.nome} 
           agendaUrl={window.location.href} 
+          onOpenBooking={() => setStep(1)}
         />
       )}
     </div>

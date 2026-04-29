@@ -1355,6 +1355,7 @@ export default function Dashboard() {
         <BarberChat 
           barbeariaName={barbearia.nome} 
           agendaUrl={agendaUrl} 
+          onOpenBooking={() => setShowAddAppointmentModal(true)}
         />
       )}
     </div>
