@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { OperationType, handleFirestoreError } from './error-handler';
 
 interface AuthContextType {
   user: User | null;
@@ -50,19 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 });
                 setIsAdmin(isSuperAdmin);
               } catch (createError) {
-                console.error("Error creating user profile:", createError);
-                // Fallback to email check if creation fails (rules might block it)
-                setIsAdmin(isSuperAdmin);
+                handleFirestoreError(createError, OperationType.WRITE, `usuarios/${user.uid}`);
               }
             }
           } catch (e: any) {
-            if (e.code === "unavailable") {
-              console.warn("Firestore offline. Tentando novamente...");
-            } else {
-              console.error("Erro ao verificar admin:", e);
-            }
-            // Fallback for connectivity issues
-            setIsAdmin(user.email === SUPER_ADMIN_EMAIL);
+            handleFirestoreError(e, OperationType.GET, `usuarios/${user.uid}`);
           }
         } else {
           setIsAdmin(false);
