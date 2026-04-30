@@ -34,6 +34,12 @@ export default function LandingPage() {
     loadMinhasBarbearias();
   }, [user]);
 
+  const handleAcessarPainel = () => {
+    if (sucesso) {
+      navigate(`/admin/${sucesso.slug}`);
+    }
+  };
+
   async function criarBarbearia() {
     if (!nomeBarbearia) return;
 
@@ -183,7 +189,7 @@ export default function LandingPage() {
                 </div>
 
                 <button 
-                  onClick={() => navigate(`/admin/${sucesso.slug}`)}
+                  onClick={handleAcessarPainel}
                   className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold mt-8 hover:bg-indigo-600 transition-all flex items-center justify-center gap-2"
                 >
                   Acessar Painel Agora <ChevronRight className="w-5 h-5" />
