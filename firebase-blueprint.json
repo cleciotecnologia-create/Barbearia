@@ -78,6 +78,19 @@
         "categoria": { "type": "string" }
       },
       "required": ["barbeariaId", "descricao", "valor", "tipo", "data"]
+    },
+    "Usuario": {
+      "title": "Usuário",
+      "description": "Perfil de usuário do sistema.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "nome": { "type": "string" },
+        "admin": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "admin"]
     }
   },
   "firestore": {
@@ -100,6 +113,10 @@
     "movimentacoes": {
       "schema": "Movimentacao",
       "description": "Coleção de registros de caixa."
+    },
+    "usuarios": {
+      "schema": "Usuario",
+      "description": "Perfis de usuários e permissões de acesso."
     }
   }
 }

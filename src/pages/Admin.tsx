@@ -139,18 +139,48 @@ export default function Dashboard() {
     c.whats.includes(clientSearchQuery)
   );
 
+  const todayStr = new Date().toLocaleDateString('en-CA');
+
   const stats = [
-    { label: 'Total Clientes', value: clientes.length, icon: Users, color: 'text-indigo-400' },
     { 
-      label: 'Produção Filtrada', 
+      label: 'Saldo Geral Hoje', 
+      value: `R$ ${(movimentacoes.filter(m => 
+        new Date(m.data).toLocaleDateString('en-CA') === todayStr
+      ).reduce((acc, curr) => curr.tipo === 'entrada' ? acc + curr.valor : acc - curr.valor, 0)).toFixed(2)}`, 
+      icon: LayoutDashboard, 
+      color: 'text-indigo-400' 
+    },
+    { 
+      label: selectedBarberFilter === "all" ? 'Produção Total' : 'Produção Barber', 
       value: `R$ ${(movimentacoes.filter(m => 
         (selectedBarberFilter === "all" || m.colaboradorId === selectedBarberFilter) &&
-        new Date(m.data).toDateString() === new Date().toDateString()
+        new Date(m.data).toLocaleDateString('en-CA') === todayStr
       ).reduce((acc, curr) => curr.tipo === 'entrada' ? acc + curr.valor : acc - curr.valor, 0)).toFixed(2)}`, 
       icon: TrendingUp, 
       color: 'text-green-400' 
     },
-    { label: 'Pendente', value: agendamentos.filter(a => a.status === 'pendente').length, icon: Clock, color: 'text-amber-400' },
+    { 
+      label: 'Comissão Estimada', 
+      value: (() => {
+        if (selectedBarberFilter === "all") return "Selecione Barber";
+        const c = colaboradores.find(col => col.id === selectedBarberFilter);
+        if (!c) return "R$ 0.00";
+        
+        const totalProd = movimentacoes.filter(m => 
+          m.colaboradorId === selectedBarberFilter &&
+          new Date(m.data).toLocaleDateString('en-CA') === todayStr &&
+          m.tipo === 'entrada'
+        ).reduce((acc, curr) => acc + curr.valor, 0);
+
+        const com = c.comissaoTipo === 'porcentagem' 
+          ? (totalProd * c.comissaoValor / 100) 
+          : (movimentacoes.filter(m => m.colaboradorId === selectedBarberFilter && new Date(m.data).toLocaleDateString('en-CA') === todayStr && m.tipo === 'entrada').length * c.comissaoValor);
+        
+        return `R$ ${com.toFixed(2)}`;
+      })(), 
+      icon: Scissors, 
+      color: 'text-amber-400' 
+    },
   ];
 
   // State for services
@@ -758,13 +788,13 @@ export default function Dashboard() {
                            <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Produção Hoje</p>
                            <p className="text-xl font-display font-bold text-indigo-400">
                              R$ {movimentacoes
-                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toDateString() === new Date().toDateString())
+                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toLocaleDateString('en-CA') === todayStr)
                                .reduce((acc, m) => acc + m.valor, 0).toFixed(2)}
                            </p>
                            <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-2">Comissão Agendada</p>
                            <p className="text-sm font-display font-bold text-green-500">
                              R$ {movimentacoes
-                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toDateString() === new Date().toDateString())
+                               .filter(m => m.colaboradorId === c.id && new Date(m.data).toLocaleDateString('en-CA') === todayStr && m.tipo === 'entrada')
                                .reduce((acc, m) => {
                                  const com = c.comissaoTipo === 'porcentagem' 
                                    ? (m.valor * c.comissaoValor / 100) 
@@ -860,11 +890,11 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                      <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Entradas (Hoje)</p>
-                        <p className="text-3xl font-display font-black text-green-500">R$ {movimentacoes.filter(m => m.tipo === 'entrada' && new Date(m.data).toDateString() === new Date().toDateString()).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
+                        <p className="text-3xl font-display font-black text-green-500">R$ {movimentacoes.filter(m => m.tipo === 'entrada' && new Date(m.data).toLocaleDateString('en-CA') === todayStr).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
                      </div>
                      <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saídas (Hoje)</p>
-                        <p className="text-3xl font-display font-black text-red-500">R$ {movimentacoes.filter(m => m.tipo === 'saida' && new Date(m.data).toDateString() === new Date().toDateString()).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
+                        <p className="text-3xl font-display font-black text-red-500">R$ {movimentacoes.filter(m => m.tipo === 'saida' && new Date(m.data).toLocaleDateString('en-CA') === todayStr).reduce((acc, m) => acc + m.valor, 0).toFixed(2)}</p>
                      </div>
                      <div className="p-8 rounded-[2.5rem] bg-[#0D0D0D] border border-white/5 space-y-2">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Saldo Geral</p>
@@ -878,15 +908,21 @@ export default function Dashboard() {
                            <tr>
                               <th className="p-6">Data</th>
                               <th className="p-6">Descrição</th>
+                              <th className="p-6">Profissional</th>
                               <th className="p-6">Categoria</th>
                               <th className="p-6 text-right">Valor</th>
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                           {movimentacoes.map(m => (
+                           {movimentacoes
+                             .filter(m => selectedBarberFilter === "all" || m.colaboradorId === selectedBarberFilter)
+                             .map(m => (
                              <tr key={m.id} className="hover:bg-white/2 transition-colors">
                                 <td className="p-6 text-xs text-slate-400">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
                                 <td className="p-6 font-bold text-white text-sm">{m.descricao}</td>
+                                <td className="p-6 text-[10px] uppercase font-bold text-indigo-400">
+                                   {colaboradores.find(c => c.id === m.colaboradorId)?.nome || '-'}
+                                </td>
                                 <td className="p-6 text-[10px] uppercase font-black text-slate-600">{m.categoria}</td>
                                 <td className={`p-6 text-right font-display font-bold ${m.tipo === 'entrada' ? 'text-green-500' : 'text-red-500'}`}>
                                    {m.tipo === 'entrada' ? '+' : '-'} R$ {m.valor.toFixed(2)}

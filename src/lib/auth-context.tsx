@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -32,11 +32,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           // Check for Unit Admin in Firestore
           try {
-            const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-            setIsAdmin(adminDoc.exists());
-          } catch (e) {
-            console.error("Error checking admin status:", e);
-            setIsAdmin(false);
+            const userDocRef = doc(db, 'usuarios', user.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            if (userDoc.exists()) {
+              setIsAdmin(userDoc.data().admin === true);
+            } else {
+              // Create the user document if it doesn't exist
+              const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+              try {
+                await setDoc(userDocRef, {
+                  uid: user.uid,
+                  email: user.email,
+                  nome: user.displayName || 'Usuário',
+                  admin: isSuperAdmin, // Default to true only if they are the super admin email
+                  createdAt: serverTimestamp()
+                });
+                setIsAdmin(isSuperAdmin);
+              } catch (createError) {
+                console.error("Error creating user profile:", createError);
+                // Fallback to email check if creation fails (rules might block it)
+                setIsAdmin(isSuperAdmin);
+              }
+            }
+          } catch (e: any) {
+            if (e.code === "unavailable") {
+              console.warn("Firestore offline. Tentando novamente...");
+            } else {
+              console.error("Erro ao verificar admin:", e);
+            }
+            // Fallback for connectivity issues
+            setIsAdmin(user.email === SUPER_ADMIN_EMAIL);
           }
         } else {
           setIsAdmin(false);

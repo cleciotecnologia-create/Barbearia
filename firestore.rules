@@ -11,14 +11,41 @@ service cloud.firestore {
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
+    
+    // Hardened isAdmin helper
     function isAdmin() { 
       return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) || 
-        (request.auth.token.email == 'cleciotecnologia@gmail.com' && request.auth.token.email_verified == true)
+        // Priority 1: Super Admin check (Hardcoded email)
+        (request.auth.token.email == 'cleciotecnologia@gmail.com' && request.auth.token.email_verified == true) || 
+        // Priority 2: Database check (Safely check if admin flag is set)
+        (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.get('admin', false) == true)
       ); 
     }
+
     function isOwner(barbeariaId) { 
-      return isSignedIn() && get(/databases/$(database)/documents/barbearias/$(barbeariaId)).data.ownerId == request.auth.uid;
+      return isSignedIn() && 
+             (isAdmin() || (
+               exists(/databases/$(database)/documents/barbearias/$(barbeariaId)) &&
+               get(/databases/$(database)/documents/barbearias/$(barbeariaId)).data.ownerId == request.auth.uid
+             ));
+    }
+
+    match /usuarios/{userId} {
+      // Users can read their own profile, Admins can read all profiles
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      
+      allow create: if isSignedIn() && request.auth.uid == userId && (
+        // Allow creating with admin:false OR if super admin
+        (incoming().get('admin', false) == false) || 
+        (request.auth.token.email == 'cleciotecnologia@gmail.com' && request.auth.token.email_verified == true)
+      );
+      
+      allow update: if isSignedIn() && request.auth.uid == userId && (
+        // User cannot change their own admin status unless they are the super admin
+        (incoming().get('admin', false) == existing().get('admin', false)) || 
+        (request.auth.token.email == 'cleciotecnologia@gmail.com' && request.auth.token.email_verified == true)
+      );
     }
 
     match /admins/{adminId} {
